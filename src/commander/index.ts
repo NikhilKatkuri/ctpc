@@ -7,8 +7,7 @@ class Commander {
   private _description: string = "";
   private _version: string = "";
   private commandRegistry: Map<string, CommandDefinition> = new Map();
-
-  // --- Renamed Public Getters (No more clashing!) ---
+ 
   public get getProgramName(): string {
     return this._name;
   }
@@ -24,7 +23,7 @@ class Commander {
   public get commands(): CommandDefinition[] {
     return Array.from(this.commandRegistry.values());
   }
-
+ 
   name(name: string) {
     this._name = name;
     return this;
@@ -50,8 +49,8 @@ class Commander {
     return new CommandBuilder(name, (finalizedCommand) => {
       this.commandRegistry.set(finalizedCommand.name, finalizedCommand);
     });
-  } 
-  
+  }
+
   parse(argv: string[]): void {
     const args = argv.slice(2);
     const firstInput = args[0];
@@ -62,7 +61,7 @@ class Commander {
     }
 
     if (!firstInput || firstInput === "-h" || firstInput === "--help") {
-      new Help(this as any).display();
+      new Help(this).display();
       process.exit(0);
     }
 
@@ -79,7 +78,7 @@ class Commander {
       arguments: {},
     };
 
-    let argPositionalIndex = 0;
+    const positionalTokens: string[] = [];
 
     for (let i = 1; i < args.length; i++) {
       const current = args[i];
@@ -99,7 +98,6 @@ class Commander {
 
         const nextVal = args[i + 1];
         if (nextVal && !nextVal.startsWith("-")) {
-          // Flag normalization logic (prevents internal option duplicate keys)
           const longFlag =
             targetOption.flags.find((f) => f.startsWith("--")) ||
             targetOption.flags[0];
@@ -115,26 +113,32 @@ class Commander {
           process.exit(1);
         }
       } else {
-        const expectedArgConfig = matchedCommand.arguments[argPositionalIndex];
-        if (expectedArgConfig) {
-          parsedResults.arguments[expectedArgConfig.name] = current;
-          argPositionalIndex++;
-        } else {
+        positionalTokens.push(current);
+      }
+    }
+
+    for (let j = 0; j < matchedCommand.arguments.length; j++) {
+      const config = matchedCommand.arguments[j];
+      const token = positionalTokens[j];
+
+      if (config) {
+        if (token) {
+          parsedResults.arguments[config.name] = token;
+        } else if (config.required) {
           console.error(
-            `Error: Unexpected standalone parameter input content token found: "${current}"`,
+            `Error: Missing required structural input argument <${config.name}>.`,
           );
           process.exit(1);
         }
       }
     }
 
-    for (const reqArg of matchedCommand.arguments) {
-      if (reqArg.required && !parsedResults.arguments[reqArg.name]) {
-        console.error(
-          `Error: Missing required structural input argument <${reqArg.name}>.`,
-        );
-        process.exit(1);
-      }
+    if (positionalTokens.length > matchedCommand.arguments.length) {
+      const extraToken = positionalTokens[matchedCommand.arguments.length];
+      console.error(
+        `Error: Unexpected standalone parameter input content token found: "${extraToken}"`,
+      );
+      process.exit(1);
     }
 
     for (const reqOpt of matchedCommand.options) {
@@ -148,7 +152,6 @@ class Commander {
         process.exit(1);
       }
     }
-
     matchedCommand.action(parsedResults);
   }
 }
