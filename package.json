@@ -1,0 +1,26 @@
+{
+  "name": "client-to-provider-cipher",
+  "version": "1.0.0",
+  "description": "Secure client-side file encryption protecting data locally at rest and during cloud storage.",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "encryption",
+    "cli",
+    "security",
+    "cloud",
+    "aes-256-gcm"
+  ],
+  "author": "",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "packageManager": "pnpm@10.27.0",
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^6.0.3"
+  }
+}
