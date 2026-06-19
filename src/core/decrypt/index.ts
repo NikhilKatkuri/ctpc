@@ -2,12 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { pipeline } from "node:stream/promises";
-import {
-  SUPPORTED_ALGORITHMS,
+import { 
   deriveKey,
   parseCompleteMetaBuffer,
   restoreExactMetadata,
   parseHeader,
+  ALGORITHM_ID_MAP,
 } from "../../algo.config.js";
 import { error, message } from "../../prompts.js";
 import { noFilesFoundMessage } from "../grace/index.js";
@@ -28,26 +28,15 @@ class Decrypt {
   };
 
   private magic = Buffer.from("C2P1");
-  private selectedAlgorithm!: (typeof SUPPORTED_ALGORITHMS)[keyof typeof SUPPORTED_ALGORITHMS];
-
-  constructor() {
-    this.refreshAlgorithmConfig();
-  }
-
-  private refreshAlgorithmConfig() {
-    const algoKey =
-      this.options.algo.toUpperCase() as keyof typeof SUPPORTED_ALGORITHMS;
-    this.selectedAlgorithm =
-      SUPPORTED_ALGORITHMS[algoKey] || SUPPORTED_ALGORITHMS["AES-256-CBC"];
-  }
+  
+   
 
   append(options: Record<string, any>) {
     this.options.key = options.key || this.options.key;
     this.options.path = options.path || this.options.path;
     this.options.output = options.output || this.options.output;
     this.options.algo = options.algo || this.options.algo;
-
-    this.refreshAlgorithmConfig();
+ 
     return this;
   }
 
@@ -77,17 +66,19 @@ class Decrypt {
     await scan(startPath);
     return allFiles;
   }
+
   async decryptFile(filePath: string) {
-    const isGCM = this.selectedAlgorithm.isGCM;
     const fd = await fs.promises.open(filePath, "r");
     let keyBuffer: Buffer | null = null;
 
-    try {
-      const fixedFieldsLength = this.magic.length + 1 + 1 + 1 + 4;
+    try { 
+      const fixedFieldsLength = this.magic.length + 1 + 1 + 1 + 1 + 4;
+
       const fixedBuffer = Buffer.alloc(fixedFieldsLength);
       await fd.read(fixedBuffer, 0, fixedFieldsLength, 0);
-
+ 
       const magicSlice = fixedBuffer.subarray(0, this.magic.length);
+
       if (!magicSlice.equals(this.magic)) {
         throw new Error(
           "Invalid cryptographic file format: Missing signature identification marker.",
@@ -95,16 +86,29 @@ class Decrypt {
       }
 
       let offset = this.magic.length;
+ 
+      const algorithmId = fixedBuffer.readUInt8(offset);
+      offset += 1;
+
+      const algorithm = ALGORITHM_ID_MAP[algorithmId];
+
+      if (!algorithm) {
+        throw new Error(`Unsupported algorithm id: ${algorithmId}`);
+      }
+
       const versionLength = fixedBuffer.readUInt8(offset);
       offset += 1;
+
       const saltLength = fixedBuffer.readUInt8(offset);
       offset += 1;
+
       const ivLength = fixedBuffer.readUInt8(offset);
       offset += 1;
+
       const metaLength = fixedBuffer.readUInt32BE(offset);
       offset += 4;
 
-      const expectedTagLength = isGCM ? this.selectedAlgorithm.tagLength : 0;
+      const expectedTagLength = algorithm.isGCM ? algorithm.tagLength : 0;
 
       const totalHeaderLength =
         fixedFieldsLength +
@@ -115,53 +119,55 @@ class Decrypt {
         expectedTagLength;
 
       const fullHeaderBuffer = Buffer.alloc(totalHeaderLength);
+
       await fd.read(fullHeaderBuffer, 0, totalHeaderLength, 0);
 
-      const { salt, iv, headerLength, meta, authTag } = parseHeader(
+      const { salt, iv, meta, authTag, headerLength } = parseHeader(
         fullHeaderBuffer,
         this.magic.length,
         expectedTagLength,
       );
 
-      keyBuffer = await deriveKey(
-        this.options.key,
-        salt,
-        this.selectedAlgorithm.keyLength,
-      );
-      const decipher = crypto.createDecipheriv(
-        this.selectedAlgorithm.name,
-        keyBuffer,
-        iv,
-      );
+      keyBuffer = await deriveKey(this.options.key, salt, algorithm.keyLength);
 
-      if (isGCM) {
+      const decipher = crypto.createDecipheriv(algorithm.name, keyBuffer, iv);
+
+      if (algorithm.isGCM) {
         (decipher as crypto.DecipherGCM).setAuthTag(authTag);
       }
 
       const startPath = path.resolve(process.cwd(), this.options.path);
+
       const relativePath = path.relative(startPath, filePath);
+
       const cleanRelativePath = relativePath.substring(
         0,
         relativePath.length - 4,
       );
+
       const outputFilePath = path.resolve(
         process.cwd(),
         this.options.output,
         cleanRelativePath,
       );
 
-      fs.mkdirSync(path.dirname(outputFilePath), { recursive: true });
+      fs.mkdirSync(path.dirname(outputFilePath), {
+        recursive: true,
+      });
 
       const fileStats = await fd.stat();
+
       const inputStream = fs.createReadStream(filePath, {
         start: headerLength,
         end: Number(fileStats.size) - 1,
       });
+
       const outputStream = fs.createWriteStream(outputFilePath);
 
       await pipeline(inputStream, decipher, outputStream);
 
       const restoredStates = parseCompleteMetaBuffer(meta);
+
       await restoreExactMetadata(outputFilePath, restoredStates);
 
       message(
@@ -169,15 +175,19 @@ class Decrypt {
       );
     } catch (err) {
       error(
-        `▲  Decryption stream aborted for ${path.basename(filePath)}:`,
+        `▲ Decryption stream aborted for ${path.basename(filePath)}:`,
         err as any,
       );
       throw err;
     } finally {
-      if (keyBuffer) keyBuffer.fill(0);
+      if (keyBuffer) {
+        keyBuffer.fill(0);
+      }
+
       await fd.close();
     }
   }
+
   async decrypt() {
     const targets = await this.getFilesList();
 

@@ -6,14 +6,13 @@ import {
   inputKeys,
   intro,
   isCancel,
-  note,
   outro,
 } from "./prompts.js";
 import Commander from "./commander/index.js";
 import pkgJson from "../package.json" with { type: "json" };
 import EncryptInstance from "./core/encrypt/index.js";
 import { SUPPORTED_ALGORITHMS } from "./algo.config.js";
-import DecryptInstance from "./core/decrypt/index.js"; 
+import DecryptInstance from "./core/decrypt/index.js";
 
 const program = new Commander();
 
@@ -88,19 +87,6 @@ program
     if (isCancel(algo)) process.exit(0);
     await DecryptInstance.append({ ...opts, key, algo }).decrypt();
     outro("Decryption process completed successfully!");
-  });
-
-program
-  .command("inspect")
-  .description(
-    "Inspect the contents of an encrypted file without decrypting it.",
-  )
-  .option(["--path"], "The path to the file or pattern to inspect")
-  .action(({ options: opts }) => {
-    intro("Welcome to Client-to-Provider Cipher (CPC) - Inspect Command");
-    note("Inspecting file with the following parameters:");
-    note("Path:", opts.path as string);
-    outro("Inspection process completed successfully!");
   });
 
 program

@@ -4,7 +4,7 @@ import pkgJson from "../package.json" with { type: "json" };
 import type { FixedBigIntStats } from "./types/index.js";
 import { promisify } from "node:util";
 
-const VERSION = pkgJson.version.split(".").slice(0, 2).join("."); 
+const VERSION = pkgJson.version.split(".").slice(0, 2).join(".");
 
 export const SUPPORTED_ALGORITHMS = {
   "AES-256-GCM": {
@@ -57,28 +57,35 @@ export const SUPPORTED_ALGORITHMS = {
   },
 } as const;
 
+export const ALGORITHM_ID_MAP = Object.fromEntries(
+  Object.values(SUPPORTED_ALGORITHMS).map((algo) => [algo.id, algo]),
+);
 export function buildHeader(
+  algorithmId: number,
   salt: Buffer,
   iv: Buffer,
   meta: Buffer,
   magic: Buffer,
   authTagLength: number,
 ): Buffer {
-  const metaLengthBuf = Buffer.alloc(4);
-  metaLengthBuf.writeUInt32BE(meta.length, 0);
+  const versionBuf = Buffer.from(VERSION, "utf8");
 
-  const versionBuf = Buffer.from(VERSION, "utf-8");
+  const metaLengthBuf = Buffer.allocUnsafe(4);
+  metaLengthBuf.writeUInt32BE(meta.length, 0);
 
   return Buffer.concat([
     magic,
+    Buffer.from([algorithmId]),
     Buffer.from([versionBuf.length]),
     Buffer.from([salt.length]),
     Buffer.from([iv.length]),
     metaLengthBuf,
+
     versionBuf,
     salt,
     iv,
     meta,
+
     Buffer.alloc(authTagLength),
   ]);
 }
@@ -89,8 +96,9 @@ export interface ParsedHeader {
   meta: Buffer;
   authTag: Buffer;
   headerLength: number;
+  algorithmId: number;
+  version: string;
 }
- 
 
 export function parseHeader(
   buf: Buffer,
@@ -99,15 +107,22 @@ export function parseHeader(
 ): ParsedHeader {
   let offset = magicLength;
 
+  const algorithmId = buf.readUInt8(offset);
+  offset += 1;
+
   const versionLength = buf.readUInt8(offset);
   offset += 1;
+
   const saltLength = buf.readUInt8(offset);
   offset += 1;
+
   const ivLength = buf.readUInt8(offset);
   offset += 1;
+
   const metaLength = buf.readUInt32BE(offset);
   offset += 4;
 
+  const version = buf.subarray(offset, offset + versionLength);
   offset += versionLength;
 
   const salt = buf.subarray(offset, offset + saltLength);
@@ -122,13 +137,21 @@ export function parseHeader(
   const authTag = buf.subarray(offset, offset + expectedTagLength);
   offset += expectedTagLength;
 
-  return { salt, iv, meta, authTag, headerLength: offset };
+  return {
+    algorithmId,
+    version: version.toString("utf8"),
+    salt,
+    iv,
+    meta,
+    authTag,
+    headerLength: offset,
+  };
 }
 
 export function parseCompleteMetaBuffer(buf: Buffer): FixedBigIntStats {
   const jsonString = buf.toString("utf-8");
   return JSON.parse(jsonString, (_key, value) => {
-      if (typeof value === "string" && /^\d+n$/.test(value)) {
+    if (typeof value === "string" && /^\d+n$/.test(value)) {
       return BigInt(value.slice(0, -1));
     }
     return value;

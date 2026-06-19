@@ -149,7 +149,14 @@ class Encrypt {
     const authTagLength = isGCM ? this.selectedAlgorithm.tagLength : 0;
 
     const metaBuffer = await buildCompleteMetaBuffer(filePath);
-    const header = buildHeader(salt, iv, metaBuffer, this.magic, authTagLength);
+    const header = buildHeader(
+      this.selectedAlgorithm.id,
+      salt,
+      iv,
+      metaBuffer,
+      this.magic,
+      authTagLength,
+    );
 
     const key = await deriveKey(
       this.options.key,
