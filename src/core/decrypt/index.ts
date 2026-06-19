@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { pipeline } from "node:stream/promises";
-import { 
+import {
   deriveKey,
   parseCompleteMetaBuffer,
   restoreExactMetadata,
@@ -16,7 +16,7 @@ interface DecryptOptions {
   key: string;
   path: string;
   output: string;
-  algo: string;
+  file: string[] | null;
 }
 
 class Decrypt {
@@ -24,25 +24,33 @@ class Decrypt {
     key: "",
     path: ".",
     output: "decrypted",
-    algo: "AES-256-CBC",
+    file: null,
   };
 
   private magic = Buffer.from("C2P1");
-  
-   
 
   append(options: Record<string, any>) {
     this.options.key = options.key || this.options.key;
     this.options.path = options.path || this.options.path;
     this.options.output = options.output || this.options.output;
-    this.options.algo = options.algo || this.options.algo;
- 
+    this.options.file = options.file
+      ? options.file.split(" ")
+      : this.options.file;
     return this;
   }
 
   private async getFilesList(): Promise<string[]> {
     const startPath = path.resolve(process.cwd(), this.options.path);
     const allFiles: string[] = [];
+
+    const targetFiles = new Set<string>(
+      this.options.file
+        ? this.options.file.map((f) => path.resolve(process.cwd(), f))
+        : [],
+    );
+
+    const isEncryptedFile = (filePath: string) =>
+      path.extname(filePath) === ".enc";
 
     const scan = async (currentPath: string) => {
       try {
@@ -51,7 +59,9 @@ class Decrypt {
           const fullPath = path.join(currentPath, dirent.name);
 
           if (dirent.isFile()) {
-            if (path.extname(dirent.name) === ".enc") {
+            if (this.options.file && targetFiles.has(fullPath)) {
+              allFiles.push(fullPath);
+            } else if (!this.options.file && isEncryptedFile(fullPath)) {
               allFiles.push(fullPath);
             }
           } else if (dirent.isDirectory()) {
@@ -71,12 +81,12 @@ class Decrypt {
     const fd = await fs.promises.open(filePath, "r");
     let keyBuffer: Buffer | null = null;
 
-    try { 
+    try {
       const fixedFieldsLength = this.magic.length + 1 + 1 + 1 + 1 + 4;
 
       const fixedBuffer = Buffer.alloc(fixedFieldsLength);
       await fd.read(fixedBuffer, 0, fixedFieldsLength, 0);
- 
+
       const magicSlice = fixedBuffer.subarray(0, this.magic.length);
 
       if (!magicSlice.equals(this.magic)) {
@@ -86,7 +96,7 @@ class Decrypt {
       }
 
       let offset = this.magic.length;
- 
+
       const algorithmId = fixedBuffer.readUInt8(offset);
       offset += 1;
 
@@ -221,9 +231,14 @@ class Decrypt {
     }
     const endTime = performance.now();
     const timeTakenSeconds = ((endTime - startTime) / 1000).toFixed(2);
+    const stats = await Promise.all(
+      targets.map((file) => fs.promises.stat(file)),
+    );
 
+    const totalBytes = stats.reduce((sum, stat) => sum + stat.size, 0);
+    const throughput = totalBytes / 1024 / 1024 / Number(timeTakenSeconds);
     message(
-      `Decryption completed in ${timeTakenSeconds} seconds for ${targets.length} file(s).`,
+      `Decryption completed in ${timeTakenSeconds} seconds for ${targets.length} file(s) with a total size of ${(totalBytes / (1024 * 1024)).toFixed(2)} MB. Average throughput: ${throughput.toFixed(2)} MB/s.`,
     );
 
     if (failureCount > 0) {
@@ -232,7 +247,7 @@ class Decrypt {
       );
     } else {
       message(
-        `Success: All target items parsed and decrypted safely. Length: ${successCount}`,
+        `Success: All ${successCount} file(s) decrypted and verified successfully.`,
       );
     }
   }

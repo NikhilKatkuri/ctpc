@@ -44,7 +44,7 @@ program
     ["-o", "--output"],
     "The path to the output file or pattern default: ./encrypted/*",
   )
-  .action(async ({ options: opts }) => {
+  .action(async ({ options: opts }) => { 
     intro("Welcome to Client-to-Provider Cipher (CPC) - Encrypt Command");
     if (opts.type && opts.file) {
       error("Error: You cannot specify both --type and --file options.");
@@ -76,16 +76,23 @@ program
 program
   .command("decrypt")
   .description("Decrypt a file using a specified algorithm and key.")
-  .option(["--file", "--f"], "The path to the file or pattern to decrypt")
-  .option(["--path", "--p"], "The path to the file or pattern to decrypt")
-  .option(["-o", "--output"], "The path to the output file or pattern")
+  .option(
+    ["-p", "--path"],
+    "Root directory containing encrypted files (default: .)",
+  )
+  .option(
+    ["-f", "--file"],
+    "One or more encrypted files to decrypt (comma-separated)",
+  )
+  .option(
+    ["-o", "--output"],
+    "Destination directory for decrypted files (default: ./decrypted)",
+  )
   .action(async ({ options: opts }) => {
     intro("Welcome to Client-to-Provider Cipher (CPC) - Decrypt Command");
-    const key = await inputKeys();
+    const key = await inputKeys(true);
     if (isCancel(key)) process.exit(0);
-    const algo = await algorithm();
-    if (isCancel(algo)) process.exit(0);
-    await DecryptInstance.append({ ...opts, key, algo }).decrypt();
+    await DecryptInstance.append({ ...opts, key }).decrypt();
     outro("Decryption process completed successfully!");
   });
 

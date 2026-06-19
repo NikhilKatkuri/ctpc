@@ -334,10 +334,12 @@ export async function algorithm() {
   });
 }
 
-export async function inputKeys() {
+export async function inputKeys(isDecryption = false) {
   const key = await password({
     mask: "*",
-    message: "Enter the encryption key:",
+    message: isDecryption
+      ? "Enter the decryption key:"
+      : "Enter the encryption key:",
     validate: (input) => {
       if (input.length < 6) return "Must be at least 6 characters.";
       if (!/[A-Z]/.test(input))
@@ -350,21 +352,23 @@ export async function inputKeys() {
       return undefined;
     },
   });
-
   if (isCancel(key)) process.exit(0);
-  const confirmKey = await password({
-    mask: "*",
-    message: "Confirm the encryption key:",
-    validate: (input) => {
-      if (input !== key) return "Keys do not match. Please try again.";
-      return undefined;
-    },
-  });
 
-  if (isCancel(confirmKey)) process.exit(0);
-  if (confirmKey !== key) {
-    error("Error: Keys do not match. Please try again.");
-    process.exit(1);
+  if (!isDecryption) {
+    const confirmKey = await password({
+      mask: "*",
+      message: "Confirm the encryption key:",
+      validate: (input) => {
+        if (input !== key) return "Keys do not match. Please try again.";
+        return undefined;
+      },
+    });
+
+    if (isCancel(confirmKey)) process.exit(0);
+    if (confirmKey !== key) {
+      error("Error: Keys do not match. Please try again.");
+      process.exit(1);
+    }
   }
   return key;
 }

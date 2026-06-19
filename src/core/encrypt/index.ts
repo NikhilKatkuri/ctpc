@@ -75,7 +75,7 @@ class Encrypt {
     const normalizedTypes = this.options.type.map((ext: string) => {
       const trimmed = ext.trim().toLowerCase();
       return trimmed.startsWith(".") ? trimmed : `.${trimmed}`;
-    }); 
+    });
     const targetTypes = new Set(normalizedTypes);
     const scan = async (currentPath: string) => {
       try {
@@ -105,10 +105,13 @@ class Encrypt {
     if (!this.options.file) return [];
 
     const startPath = path.resolve(process.cwd(), this.options.input);
-    const allowSubdirectories = this.options.nested;
     const targetNames = new Set(
-      this.options.file.map((f: string) => path.basename(f.trim())),
+      this.options.file
+        .toString()
+        ?.split(",")
+        .map((f: string) => path.basename(f.trim())),
     );
+  
     const allFiles: string[] = [];
 
     const scan = async (currentPath: string) => {
@@ -121,7 +124,7 @@ class Encrypt {
             if (targetNames.has(dirent.name)) {
               allFiles.push(fullPath);
             }
-          } else if (dirent.isDirectory() && allowSubdirectories) {
+          } else if (dirent.isDirectory()) {
             await scan(fullPath);
           }
         }
@@ -236,8 +239,13 @@ class Encrypt {
     }
     const endTime = performance.now();
     const timeTakenSeconds = ((endTime - startTime) / 1000).toFixed(2);
+    const stats = await Promise.all(
+      filesToEncrypt.map((file) => fs.promises.stat(file)),
+    );
+    const totalBytes = stats.reduce((sum, stat) => sum + stat.size, 0);
+    const throughput = totalBytes / 1024 / 1024 / Number(timeTakenSeconds);
     message(
-      `Encryption completed in ${timeTakenSeconds} seconds for ${filesToEncrypt.length} file(s).`,
+      `Encryption completed in ${timeTakenSeconds} seconds for ${filesToEncrypt.length} file(s) with a total size of ${(totalBytes / (1024 * 1024)).toFixed(2)} MB. Average throughput: ${throughput.toFixed(2)} MB/s.`,
     );
     message(
       `Success: All data blocks successfully encrypted and flushed to disk.`,
