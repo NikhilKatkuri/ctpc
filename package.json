@@ -1,5 +1,5 @@
 {
-  "name": "client-to-provider-cipher",
+  "name": "@nikhil07k/ctpc",
   "version": "1.0.0",
   "description": "Secure client-side file encryption protecting data locally at rest and during cloud storage.",
   "type": "module",
@@ -10,26 +10,46 @@
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",
-    "watch:build": "tsc --watch --outDir dist",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "encryption",
+    "decryption",
     "cli",
     "security",
     "cloud",
-    "aes-256-gcm"
+    "aes",
+    "aes-256-gcm",
+    "cryptography",
+    "file-encryption",
+    "client-side"
   ],
-  "author": "",
+  "author": {
+    "name": "Nikhil Katkuri",
+    "url": "https://github.com/nikhilKatkuri"
+  },
   "license": "SEE LICENSE IN LICENSE.md",
+  "homepage": "https://github.com/nikhilKatkuri/client-to-provider-cipher#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nikhilKatkuri/client-to-provider-cipher.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nikhilKatkuri/client-to-provider-cipher/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "packageManager": "pnpm@10.27.0",
   "devDependencies": {
     "@types/node": "^20.11.0",
     "typescript": "^6.0.3"
   },
-   "files": [
+  "files": [
     "dist",
-    "LICENSE",
+    "LICENSE.md",
+    "assets",
     "README.md"
   ]
 }

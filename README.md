@@ -1,11 +1,17 @@
 # CTPC (Client-to-Provider Cipher)
 
 **A [Stratify Minds](https://github.com/NikhilKatkuri) Project**
+
 > A high-performance, zero-knowledge CLI utility for securing local files before cloud synchronization.
 
-<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; font-family: sans-serif;">
-  <img src="assets/Icon.svg" alt="CTPC Logo" width="256">
-  <p><strong>ctcp</strong></p>
+<div align="center">
+  <img src="https://raw.githubusercontent.com/nikhilKatkuri/ctpc/main/assets/Icon.svg" alt="CTPC Logo" width="128" />
+  <h1>ctpc</h1>
+  <p>Secure client-side file encryption protecting data locally at rest and during cloud storage.</p>
+
+  <img src="https://img.shields.io/npm/v/@nikhil07k/ctpc?color=blue&style=flat-square" alt="npm version" />
+  <img src="https://img.shields.io/npm/l/@nikhil07k/ctpc?style=flat-square" alt="license" />
+  <img src="https://img.shields.io/node/v/@nikhil07k/ctpc?style=flat-square" alt="node version" />
 </div>
 
 
@@ -16,8 +22,13 @@ Most cloud storage providers are not encrypted with your own keys. CTPC solves t
 ## Installation
 
 ```bash
-npm install -g ctpc
+# Install globally
+npm install -g @nikhil07k/ctpc
+
+# Or use directly
+npx @nikhil07k/ctpc
 ```
+
 
 ## Verify
 
@@ -136,6 +147,7 @@ CTPC displays a performance summary at the end of every successful encryption an
 | **Files / Second**     | Average number of files processed per second. |
 
 ### Report
+
 | Metric     |     Encryption |     Decryption |
 | ---------- | -------------: | -------------: |
 | Files      |        **609** |        **609** |
@@ -150,8 +162,6 @@ CTPC displays a performance summary at the end of every successful encryption an
 | Average file size |  **≈1.04 MB/file** |
 | Encryption rate   | **≈53.70 files/s** |
 | Decryption rate   | **≈52.05 files/s** |
-
-
 
 **Note:** Every successful encryption or decryption operation concludes with a performance summary, including the number of processed files, total data size, execution time, and average throughput.
 
