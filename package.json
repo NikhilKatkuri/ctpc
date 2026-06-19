@@ -4,6 +4,9 @@
   "description": "Secure client-side file encryption protecting data locally at rest and during cloud storage.",
   "type": "module",
   "main": "dist/index.js",
+  "bin": {
+    "ctpc": "./dist/index.js"
+  },
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",
