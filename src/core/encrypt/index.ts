@@ -13,6 +13,7 @@ import {
 } from "../../algo.config.js";
 import { pipeline } from "node:stream/promises";
 import type { EncryptOptions } from "../../types/index.js";
+import { error, message } from "../../prompts.js";
 
 class Encrypt {
   private options: EncryptOptions = {
@@ -43,13 +44,13 @@ class Encrypt {
     if (use === "type" && options.type) {
       this.options.type = options.type
         .toString()
-        .split(",")
+        .split(" ")
         .map((t: string) => t.trim());
       this.options.file = null;
     } else if (options.file) {
       this.options.file = options.file
         .toString()
-        .split(",")
+        .split(" ")
         .map((f: string) => f.trim());
       this.options.type = null;
     }
@@ -70,9 +71,12 @@ class Encrypt {
 
     const startPath = path.resolve(process.cwd(), this.options.input);
     const allowSubdirectories = this.options.nested;
-    const targetTypes = new Set(this.options.type);
     const allFiles: string[] = [];
-
+    const normalizedTypes = this.options.type.map((ext: string) => {
+      const trimmed = ext.trim().toLowerCase();
+      return trimmed.startsWith(".") ? trimmed : `.${trimmed}`;
+    }); 
+    const targetTypes = new Set(normalizedTypes);
     const scan = async (currentPath: string) => {
       try {
         const dir = await fs.promises.opendir(currentPath);
@@ -80,7 +84,8 @@ class Encrypt {
           const fullPath = path.join(currentPath, dirent.name);
 
           if (dirent.isFile()) {
-            if (targetTypes.has(path.extname(dirent.name))) {
+            const fileExt = path.extname(dirent.name).toLowerCase();
+            if (targetTypes.has(fileExt)) {
               allFiles.push(fullPath);
             }
           } else if (dirent.isDirectory() && allowSubdirectories) {
@@ -88,7 +93,7 @@ class Encrypt {
           }
         }
       } catch (err) {
-        console.error(`Error scanning path ${currentPath}:`, err);
+        error(`Error scanning path ${currentPath}:`, err);
       }
     };
 
@@ -100,23 +105,32 @@ class Encrypt {
     if (!this.options.file) return [];
 
     const startPath = path.resolve(process.cwd(), this.options.input);
+    const allowSubdirectories = this.options.nested;
     const targetNames = new Set(
       this.options.file.map((f: string) => path.basename(f.trim())),
     );
     const allFiles: string[] = [];
 
-    try {
-      const dir = await fs.promises.opendir(startPath);
-      for await (const dirent of dir) {
-        const fullPath = path.join(startPath, dirent.name);
-        if (dirent.isFile() && targetNames.has(dirent.name)) {
-          allFiles.push(fullPath);
-        }
-      }
-    } catch (err) {
-      console.error(`Error scanning path ${startPath}:`, err);
-    }
+    const scan = async (currentPath: string) => {
+      try {
+        const dir = await fs.promises.opendir(currentPath);
+        for await (const dirent of dir) {
+          const fullPath = path.join(currentPath, dirent.name);
 
+          if (dirent.isFile()) {
+            if (targetNames.has(dirent.name)) {
+              allFiles.push(fullPath);
+            }
+          } else if (dirent.isDirectory() && allowSubdirectories) {
+            await scan(fullPath);
+          }
+        }
+      } catch (err) {
+        error(`Error scanning path ${currentPath}:`, err);
+      }
+    };
+
+    await scan(startPath);
     return allFiles;
   }
 
@@ -137,11 +151,11 @@ class Encrypt {
     const metaBuffer = await buildCompleteMetaBuffer(filePath);
     const header = buildHeader(salt, iv, metaBuffer, this.magic, authTagLength);
 
-   const key = await deriveKey(
-     this.options.key,
-     salt,
-     this.selectedAlgorithm.keyLength,
-   );
+    const key = await deriveKey(
+      this.options.key,
+      salt,
+      this.selectedAlgorithm.keyLength,
+    );
     const cipher = crypto.createCipheriv(this.selectedAlgorithm.name, key, iv);
 
     const inputStream = fs.createReadStream(filePath);
@@ -156,7 +170,6 @@ class Encrypt {
     );
 
     fs.mkdirSync(path.dirname(outputFilePath), { recursive: true });
-
     const outputStream = fs.createWriteStream(outputFilePath);
 
     try {
@@ -166,19 +179,22 @@ class Encrypt {
 
       if (isGCM) {
         const authTag = (cipher as crypto.CipherGCM).getAuthTag();
-        await fs.promises.appendFile(outputFilePath, authTag);
+
+        const fd = await fs.promises.open(outputFilePath, "r+");
+        const tagOffset = header.length - authTag.length;
+
+        await fd.write(authTag, 0, authTag.length, tagOffset);
+        await fd.close();
       }
 
-      console.log(
-        `Encrypted ${path.basename(filePath)} -> ${path.basename(outputFilePath)}`,
-      );
-    } catch (error) {
+      message(`Encrypted: ${relativePath} -> ${path.basename(outputFilePath)}`);
+    } catch (err) {
       outputStream.destroy();
       if (fs.existsSync(outputFilePath)) {
         await fs.promises.unlink(outputFilePath).catch(() => null);
       }
-      console.error(`Error processing file ${filePath}:`, error);
-      throw error;
+      error(`Encryption pipeline failed for ${filePath}:`, err as any);
+      throw err;
     } finally {
       key.fill(0);
     }
@@ -198,9 +214,11 @@ class Encrypt {
       return;
     }
 
-    console.log(`Found ${filesToEncrypt.length} file(s) to encrypt.`);
+    message(
+      `Located ${filesToEncrypt.length} target file(s) for encryption. Initializing allocation matrices...`,
+    );
     this.checkAndCreateOutputDir();
-
+    const startTime = performance.now();
     const BATCH_SIZE = 10;
     for (let i = 0; i < filesToEncrypt.length; i += BATCH_SIZE) {
       const currentBatch = filesToEncrypt.slice(i, i + BATCH_SIZE);
@@ -209,11 +227,16 @@ class Encrypt {
       );
       await Promise.all(batchPromises);
     }
-
-    console.log(`\nSuccess: All batches flushed out cleanly.`);
+    const endTime = performance.now();
+    const timeTakenSeconds = ((endTime - startTime) / 1000).toFixed(2);
+    message(
+      `Encryption completed in ${timeTakenSeconds} seconds for ${filesToEncrypt.length} file(s).`,
+    );
+    message(
+      `Success: All data blocks successfully encrypted and flushed to disk.`,
+    );
   }
 }
 
 const EncryptInstance = new Encrypt();
-
 export default EncryptInstance;

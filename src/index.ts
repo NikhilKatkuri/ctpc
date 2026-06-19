@@ -1,9 +1,19 @@
 #!/usr/bin/env node
 
+import {
+  algorithm,
+  error,
+  inputKeys,
+  intro,
+  isCancel,
+  note,
+  outro,
+} from "./prompts.js";
 import Commander from "./commander/index.js";
 import pkgJson from "../package.json" with { type: "json" };
 import EncryptInstance from "./core/encrypt/index.js";
 import { SUPPORTED_ALGORITHMS } from "./algo.config.js";
+import DecryptInstance from "./core/decrypt/index.js"; 
 
 const program = new Commander();
 
@@ -15,7 +25,6 @@ program
 program
   .command("encrypt")
   .description("Encrypt a file using a specified algorithm and key.")
-  .option(["--key", "--k"], "The raw cryptographic key passphrase", true)
   .option(
     ["--type"],
     "Target classification file extension or pattern (e.g., .txt, .jpg, *.log or .png,.jpg) (no-default)",
@@ -36,48 +45,49 @@ program
     ["-o", "--output"],
     "The path to the output file or pattern default: ./encrypted/*",
   )
-  .option(
-    ["-a", "--algo"],
-    "The cryptographic algorithm to use (default: AES-256-CBC)",
-  )
   .action(async ({ options: opts }) => {
+    intro("Welcome to Client-to-Provider Cipher (CPC) - Encrypt Command");
     if (opts.type && opts.file) {
-      console.error(
-        "Error: You cannot specify both --type and --file options.",
-      );
+      error("Error: You cannot specify both --type and --file options.");
       process.exit(1);
     }
 
     if (!opts.type && !opts.file) {
-      console.error("Error: You must specify either --type or --file option.");
+      error("Error: You must specify either --type or --file option.");
       process.exit(1);
     }
 
     if (opts.file && opts.nested) {
-      console.error(
-        "Error: You cannot specify --nested option when using --file.",
-      );
+      error("Error: You cannot specify --nested option when using --file.");
       process.exit(1);
     }
 
-    await EncryptInstance.append(opts, opts.type ? "type" : "file").encrypt();
+    const key = await inputKeys();
+    if (isCancel(key)) process.exit(0);
+    const algo = await algorithm();
+    if (isCancel(algo)) process.exit(0);
+    await EncryptInstance.append(
+      { ...opts, key, algo },
+      opts.type ? "type" : "file",
+    ).encrypt();
+
+    outro("Encryption process completed successfully!");
   });
 
 program
   .command("decrypt")
   .description("Decrypt a file using a specified algorithm and key.")
-  .argument("path", "The path to the file or pattern to decrypt")
-  .option(["--key", "--k"], "The raw cryptographic key passphrase", true)
+  .option(["--file", "--f"], "The path to the file or pattern to decrypt")
+  .option(["--path", "--p"], "The path to the file or pattern to decrypt")
   .option(["-o", "--output"], "The path to the output file or pattern")
-  .option(
-    ["-a", "--algo"],
-    "The cryptographic algorithm to use (default: AES-256-CBC)",
-  )
-  .action(({ arguments: args, options: opts }) => {
-    console.log("Decrypting file with the following parameters:");
-    console.log("Path:", args.path);
-    console.log("Key:", opts.key);
-    console.log("Output:", opts.output);
+  .action(async ({ options: opts }) => {
+    intro("Welcome to Client-to-Provider Cipher (CPC) - Decrypt Command");
+    const key = await inputKeys();
+    if (isCancel(key)) process.exit(0);
+    const algo = await algorithm();
+    if (isCancel(algo)) process.exit(0);
+    await DecryptInstance.append({ ...opts, key, algo }).decrypt();
+    outro("Decryption process completed successfully!");
   });
 
 program
@@ -85,27 +95,19 @@ program
   .description(
     "Inspect the contents of an encrypted file without decrypting it.",
   )
-  .argument("path", "The path to the file or pattern to inspect")
-  .action(({ arguments: args }) => {
-    console.log("Inspecting file with the following parameters:");
-    console.log("Path:", args.path);
+  .option(["--path"], "The path to the file or pattern to inspect")
+  .action(({ options: opts }) => {
+    intro("Welcome to Client-to-Provider Cipher (CPC) - Inspect Command");
+    note("Inspecting file with the following parameters:");
+    note("Path:", opts.path as string);
+    outro("Inspection process completed successfully!");
   });
 
-program
-  .command("keygen")
-  .description("Generate a new cryptographic key.")
-  .option(
-    ["-l", "--length"],
-    "The length of the key in bits: 128, 192, or 256 (default: 256)",
-  )
-  .action(({ options: opts }) => {
-    console.log("Generating key with the following parameters:");
-    console.log("Length:", opts.length ?? 256);
-  });
 program
   .command("list")
   .description("List all algorithms supported by the tool.")
   .action(() => {
+    intro("CPC Supported Cryptographic Profiles:");
     const tableData = Object.entries(SUPPORTED_ALGORITHMS).map(
       ([profileName, config]) => ({
         "Profile Name": profileName,
@@ -114,9 +116,8 @@ program
         "Auth Mode": config.isGCM ? "Authenticated (GCM)" : "Standard Block",
       }),
     );
-
-    console.log("\nCPC Supported Cryptographic Profiles:\n");
     console.table(tableData);
+    outro("End of Supported Algorithms List");
   });
 
 program.parse(process.argv);

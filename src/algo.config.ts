@@ -1,11 +1,10 @@
 import crypto from "node:crypto";
 import fs from "fs";
 import pkgJson from "../package.json" with { type: "json" };
-import type { FixedBigIntStats, ParsedHeader } from "./types/index.js";
+import type { FixedBigIntStats } from "./types/index.js";
 import { promisify } from "node:util";
 
-const VERSION = pkgJson.version.split(".").slice(0, 2).join(".");
-const systemCiphers = new Set(crypto.getCiphers());
+const VERSION = pkgJson.version.split(".").slice(0, 2).join("."); 
 
 export const SUPPORTED_ALGORITHMS = {
   "AES-256-GCM": {
@@ -58,14 +57,6 @@ export const SUPPORTED_ALGORITHMS = {
   },
 } as const;
 
-export const algorithms = Object.keys(SUPPORTED_ALGORITHMS).filter(
-  (algoKey) => {
-    const profile =
-      SUPPORTED_ALGORITHMS[algoKey as keyof typeof SUPPORTED_ALGORITHMS];
-    return systemCiphers.has(profile.name);
-  },
-);
-
 export function buildHeader(
   salt: Buffer,
   iv: Buffer,
@@ -76,12 +67,15 @@ export function buildHeader(
   const metaLengthBuf = Buffer.alloc(4);
   metaLengthBuf.writeUInt32BE(meta.length, 0);
 
+  const versionBuf = Buffer.from(VERSION, "utf-8");
+
   return Buffer.concat([
     magic,
-    Buffer.from([VERSION.length]),
+    Buffer.from([versionBuf.length]),
     Buffer.from([salt.length]),
     Buffer.from([iv.length]),
     metaLengthBuf,
+    versionBuf,
     salt,
     iv,
     meta,
@@ -89,15 +83,65 @@ export function buildHeader(
   ]);
 }
 
-const scryptAsync = promisify(crypto.scrypt);
+export interface ParsedHeader {
+  salt: Buffer;
+  iv: Buffer;
+  meta: Buffer;
+  authTag: Buffer;
+  headerLength: number;
+}
+ 
 
+export function parseHeader(
+  buf: Buffer,
+  magicLength: number,
+  expectedTagLength: number,
+): ParsedHeader {
+  let offset = magicLength;
+
+  const versionLength = buf.readUInt8(offset);
+  offset += 1;
+  const saltLength = buf.readUInt8(offset);
+  offset += 1;
+  const ivLength = buf.readUInt8(offset);
+  offset += 1;
+  const metaLength = buf.readUInt32BE(offset);
+  offset += 4;
+
+  offset += versionLength;
+
+  const salt = buf.subarray(offset, offset + saltLength);
+  offset += saltLength;
+
+  const iv = buf.subarray(offset, offset + ivLength);
+  offset += ivLength;
+
+  const meta = buf.subarray(offset, offset + metaLength);
+  offset += metaLength;
+
+  const authTag = buf.subarray(offset, offset + expectedTagLength);
+  offset += expectedTagLength;
+
+  return { salt, iv, meta, authTag, headerLength: offset };
+}
+
+export function parseCompleteMetaBuffer(buf: Buffer): FixedBigIntStats {
+  const jsonString = buf.toString("utf-8");
+  return JSON.parse(jsonString, (_key, value) => {
+      if (typeof value === "string" && /^\d+n$/.test(value)) {
+      return BigInt(value.slice(0, -1));
+    }
+    return value;
+  }) as FixedBigIntStats;
+}
+
+const scryptAsync = promisify(crypto.scrypt);
 export async function deriveKey(
   password: string,
   salt: Buffer,
   keyLength: number,
 ): Promise<Buffer> {
-  const derivedKey = await scryptAsync(password, salt, keyLength);
-  return derivedKey as Buffer;
+  return (await scryptAsync(password, salt, keyLength)) as Buffer;
 }
 
 export async function buildCompleteMetaBuffer(
@@ -107,42 +151,20 @@ export async function buildCompleteMetaBuffer(
   const jsonString = JSON.stringify(stats, (_key, value) => {
     return typeof value === "bigint" ? value.toString() + "n" : value;
   });
-
   return Buffer.from(jsonString, "utf-8");
 }
 
-export function parseHeader(buf: Buffer, magicLength: number): ParsedHeader {
-  let offset = magicLength;
-  const versionLength = buf.readUInt8(offset);
-  offset += 1;
-  const saltLength = buf.readUInt8(offset);
-  offset += 1;
-  const ivLength = buf.readUInt8(offset);
-  offset += 1;
-  const metaLength = buf.readUInt32BE(offset);
-  offset += 4;
-  offset += versionLength;
-  const authTagLength =
-    buf.length - offset - saltLength - ivLength - metaLength;
-
-  const salt = buf.subarray(offset, offset + saltLength);
-  offset += saltLength;
-  const iv = buf.subarray(offset, offset + ivLength);
-  offset += ivLength;
-  const meta = buf.subarray(offset, offset + metaLength);
-  offset += metaLength;
-
-  const authTag = buf.subarray(offset, offset + authTagLength);
-
-  return { salt, iv, meta, authTag };
-}
-
-export function parseCompleteMetaBuffer(buf: Buffer): FixedBigIntStats {
-  const jsonString = buf.toString("utf-8");
-  return JSON.parse(jsonString, (_key, value) => {
-    if (typeof value === "string" && value.endsWith("n")) {
-      return BigInt(value.slice(0, -1));
-    }
-    return value;
-  }) as FixedBigIntStats;
+export async function restoreExactMetadata(
+  outputFilePath: string,
+  stats: FixedBigIntStats,
+): Promise<void> {
+  const exactAtimeSec = Number(stats.atimeNs) / 1e9;
+  const exactMtimeSec = Number(stats.mtimeNs) / 1e9;
+  const fileHandle = await fs.promises.open(outputFilePath, "r+");
+  try {
+    await fileHandle.utimes(exactAtimeSec, exactMtimeSec);
+    await fileHandle.chmod(Number(stats.mode));
+  } finally {
+    await fileHandle.close();
+  }
 }

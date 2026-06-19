@@ -3,6 +3,7 @@ export interface ParsedHeader {
   iv: Buffer;
   meta: Buffer;
   authTag: Buffer;
+  headerLength: number;
 }
 
 export interface FixedBigIntStats {
